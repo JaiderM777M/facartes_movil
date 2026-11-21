@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:typed_data';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AiResult {
   final List<String> tags;
@@ -8,14 +10,17 @@ class AiResult {
 }
 
 class AiService {
-  /// FASE 2: reemplazar por llamada a una Edge Function de Supabase que use Gemini.
-  /// Por ahora devuelve un resultado simulado.
+  /// Llama a la Edge Function `analyze-artwork`, que consulta Gemini.
   static Future<AiResult> analyze(Uint8List bytes, String mime) async {
-    await Future.delayed(const Duration(seconds: 2));
-    return const AiResult(
-      tags: ['Pintura', 'Óleo', 'Paisaje', 'Realismo', 'Montaña', 'Arquitectura'],
-      category: 'Pintura',
-      description: 'Descripción simulada (la IA real se conecta en la Fase 2).',
+    final res = await Supabase.instance.client.functions.invoke(
+      'analyze-artwork',
+      body: {'image': base64Encode(bytes), 'mime': mime},
+    );
+    final d = Map<String, dynamic>.from(res.data as Map);
+    return AiResult(
+      tags: List<String>.from(d['tags'] ?? const []),
+      category: (d['category'] as String?) ?? 'Otro',
+      description: (d['description'] as String?) ?? '',
     );
   }
 }

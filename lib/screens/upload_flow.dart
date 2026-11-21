@@ -91,8 +91,9 @@ class _AnalyzingScreenState extends State<AnalyzingScreen> {
         if (!mounted || shown >= r.tags.length) { x.cancel(); return; }
         setState(() => shown++);
       });
-    } catch (_) {
-      if (mounted) setState(() => error = 'No se pudo analizar la imagen. Puedes continuar manualmente.');
+    } catch (e) {
+      debugPrint('Error IA: $e');
+      if (mounted) setState(() => error = 'No se pudo analizar: $e');
     }
   }
 
