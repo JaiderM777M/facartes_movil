@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core.dart';
 import 'detail_screen.dart';
 
 class _Msg {
   final bool user;
   final String text;
-  final bool art;
-  _Msg(this.user, this.text, {this.art = false});
+  final List<String> artIds;
+  _Msg(this.user, this.text, {this.artIds = const []});
 }
 
 class AssistantScreen extends StatefulWidget {
@@ -18,44 +19,55 @@ class AssistantScreen extends StatefulWidget {
 class _AssistantScreenState extends State<AssistantScreen> {
   final ctrl = TextEditingController();
   final scroll = ScrollController();
+  bool busy = false;
   final msgs = <_Msg>[
-    _Msg(true, 'Muéstrame obras de arquitectura recientes'),
-    _Msg(false, 'Encontré estas obras relacionadas con arquitectura:', art: true),
-    _Msg(true, '¿Qué técnica es el óleo sobre lienzo?'),
-    _Msg(false, 'Es una técnica de pintura con pigmentos mezclados con aceite, aplicada sobre una tela tensada. Permite capas, transparencias y tiempos largos de secado.'),
+    _Msg(false, '¡Hola! Soy el asistente de FACARTES. Pregúntame por obras de la galería o por técnicas y estilos de arte.'),
   ];
 
-  // TODO IA: reemplazar por llamada real al modelo.
-  void _reply(String q) {
-    final l = q.toLowerCase();
-    final m = l.contains('arquitect')
-        ? _Msg(false, 'Estas son algunas obras de arquitectura:', art: true)
-        : _Msg(false, 'Por ahora soy un prototipo, pero pronto podré responder: "$q".');
-    setState(() => msgs.add(m));
-    _down();
-  }
-
   void _down() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent + 200, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+        if (scroll.hasClients) {
+          scroll.animateTo(scroll.position.maxScrollExtent + 200,
+              duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+        }
       });
 
-  void _send() {
+  Future<void> _send() async {
     final t = ctrl.text.trim();
-    if (t.isEmpty) return;
+    if (t.isEmpty || busy) return;
     ctrl.clear();
-    setState(() => msgs.add(_Msg(true, t)));
+    setState(() {
+      msgs.add(_Msg(true, t));
+      busy = true;
+    });
     _down();
-    Future.delayed(const Duration(milliseconds: 700), () => _reply(t));
+    try {
+      final history = msgs.skip(1).toList(); // sin el saludo inicial
+      final recent = history.length > 8 ? history.sublist(history.length - 8) : history;
+      final res = await Supabase.instance.client.functions.invoke('assistant-chat', body: {
+        'messages': [
+          for (final m in recent) {'role': m.user ? 'user' : 'model', 'text': m.text}
+        ],
+      });
+      final d = Map<String, dynamic>.from(res.data as Map);
+      msgs.add(_Msg(false, (d['text'] as String?) ?? '...',
+          artIds: List<String>.from(d['artwork_ids'] ?? const [])));
+    } catch (e) {
+      msgs.add(_Msg(false, 'No pude responder ahora. Intenta de nuevo. ($e)'));
+    }
+    if (mounted) {
+      setState(() => busy = false);
+      _down();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final arts = artworks.value.where((a) => a.tags.contains('Arquitectura')).followedBy(artworks.value).take(3).toList();
+    final byId = {for (final a in artworks.value) a.id: a};
+    final maxW = MediaQuery.of(context).size.width * .78;
     return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-        child: Row(children: const [
-          SizedBox(width: 12),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 16, 8),
+        child: Row(children: [
           Text('Asistente FACARTES', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           SizedBox(width: 8),
           Icon(Icons.auto_awesome, color: kPrimary, size: 20),
@@ -65,20 +77,26 @@ class _AssistantScreenState extends State<AssistantScreen> {
         child: ListView.builder(
           controller: scroll,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: msgs.length,
+          itemCount: msgs.length + (busy ? 1 : 0),
           itemBuilder: (_, k) {
-            final m = msgs[k];
+            final typing = k == msgs.length;
+            final m = typing ? null : msgs[k];
+            final isUser = m?.user ?? false;
+            final arts = (m?.artIds ?? const <String>[]).map((id) => byId[id]).whereType<Artwork>().toList();
             final bubble = Container(
-              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .78),
+              constraints: BoxConstraints(maxWidth: maxW),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: m.user ? kPrimary : Colors.white,
+                color: isUser ? kPrimary : Colors.white,
                 borderRadius: BorderRadius.circular(18),
-                boxShadow: m.user ? null : [BoxShadow(color: Colors.black.withOpacity(.06), blurRadius: 10, offset: const Offset(0, 3))],
+                boxShadow: isUser
+                    ? null
+                    : [BoxShadow(color: Colors.black.withValues(alpha: .06), blurRadius: 10, offset: const Offset(0, 3))],
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(m.text, style: TextStyle(color: m.user ? Colors.white : kInk, height: 1.35)),
-                if (m.art) ...[
+                Text(typing ? 'Pensando...' : m!.text,
+                    style: TextStyle(color: isUser ? Colors.white : kInk, height: 1.35)),
+                if (arts.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   SizedBox(
                     height: 84,
@@ -97,7 +115,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
             );
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Align(alignment: m.user ? Alignment.centerRight : Alignment.centerLeft, child: bubble),
+              child: Align(alignment: isUser ? Alignment.centerRight : Alignment.centerLeft, child: bubble),
             );
           },
         ),
@@ -110,13 +128,14 @@ class _AssistantScreenState extends State<AssistantScreen> {
               controller: ctrl,
               onSubmitted: (_) => _send(),
               decoration: const InputDecoration(
-                  hintText: 'Pregúntale algo al asistente...',
-                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
+                hintText: 'Pregúntale algo al asistente...',
+                contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              ),
             ),
           ),
           const SizedBox(width: 8),
           IconButton.filled(
-            onPressed: _send,
+            onPressed: busy ? null : _send,
             style: IconButton.styleFrom(backgroundColor: kPrimary, minimumSize: const Size(52, 52)),
             icon: const Icon(Icons.send_rounded, color: Colors.white),
           ),
