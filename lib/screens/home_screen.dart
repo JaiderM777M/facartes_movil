@@ -35,13 +35,34 @@ class _HomeScreenState extends State<HomeScreen> {
     return _norm(q).split(' ').where((w) => w.isNotEmpty).every((w) => hay.contains(w));
   }
 
+  /// Recomienda 3 obras: puntúa por coincidencia de etiquetas y categoría con
+  /// las obras que te gustaron o guardaste; desempata por número de likes.
+  List<Artwork> _recommend(List<Artwork> list) {
+    final prefs = <String, int>{};
+    for (final a in list.where((a) => a.liked || a.saved)) {
+      for (final t in [...a.tags, a.category]) {
+        prefs[_norm(t)] = (prefs[_norm(t)] ?? 0) + 1;
+      }
+    }
+    int score(Artwork a) =>
+        [...a.tags, a.category].fold(0, (s, t) => s + (prefs[_norm(t)] ?? 0));
+
+    final pool = list.where((a) => !a.mine && !a.liked && !a.saved).toList();
+    final base = pool.isNotEmpty ? pool : list;
+    final sorted = [...base]..sort((x, y) {
+        final c = score(y).compareTo(score(x));
+        return c != 0 ? c : y.likes.compareTo(x.likes);
+      });
+    return sorted.take(3).toList();
+  }
+
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<List<Artwork>>(
         valueListenable: artworks,
         builder: (context, list, _) {
           final searching = q.trim().isNotEmpty;
           final shown = searching ? list.where(_match).toList() : list;
-          final rec = list.take(3).toList();
+          final rec = _recommend(list);
           return RefreshIndicator(
             onRefresh: Repo.refresh,
             color: kPrimary,
@@ -123,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                             ),
-                            const Positioned(left: 8, top: 8, child: AiBadge(text: 'Sugerido por IA')),
+                            const Positioned(left: 8, top: 8, child: AiBadge(text: 'Según tus gustos')),
                             Positioned(
                               left: 12,
                               right: 12,
