@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core.dart';
 
@@ -10,10 +11,24 @@ class Repo {
   static String get displayName =>
       (_sb.auth.currentUser?.userMetadata?['name'] as String?) ?? 'Artista';
 
+  /// URL de la foto de perfil del usuario actual.
+  static final avatar = ValueNotifier<String?>(null);
+
+  /// Ruta dentro del bucket a partir de la URL pública.
+  static String? _storagePath(String? url) {
+    if (url == null) return null;
+    const marker = '/artworks/';
+    final i = url.indexOf(marker);
+    return i >= 0 ? url.substring(i + marker.length) : null;
+  }
+
   static Future<void> refresh() async {
+    final me = await _sb.from('profiles').select('avatar_url').eq('id', uid).maybeSingle();
+    avatar.value = me?['avatar_url'] as String?;
+
     final rows = await _sb
         .from('artworks')
-        .select('*, profiles!artworks_user_id_fkey(name, dept), likes(count)')
+        .select('*, profiles!artworks_user_id_fkey(name, dept, avatar_url), likes(count)')
         .order('created_at', ascending: false);
     final liked = (await _sb.from('likes').select('artwork_id').eq('user_id', uid))
         .map((r) => r['artwork_id'] as String)
@@ -90,9 +105,7 @@ class Repo {
 
   /// Borra la obra (solo la tuya, por RLS) y su imagen del almacenamiento.
   static Future<void> deleteArtwork(Artwork a) async {
-    const marker = '/artworks/';
-    final i = a.imageUrl.indexOf(marker);
-    final path = i >= 0 ? a.imageUrl.substring(i + marker.length) : null;
+    final path = _storagePath(a.imageUrl);
     await _sb.from('artworks').delete().eq('id', a.id);
     if (path != null) {
       try {
@@ -102,8 +115,26 @@ class Repo {
     await refresh();
   }
 
+  /// Sube una foto de perfil nueva y borra la anterior.
+  static Future<void> updateAvatar(Uint8List bytes, String mime) async {
+    final ext = mime.contains('png') ? 'png' : 'jpg';
+    final path = '$uid/avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _sb.storage.from('artworks').uploadBinary(path, bytes, fileOptions: FileOptions(contentType: mime));
+    final url = _sb.storage.from('artworks').getPublicUrl(path);
+    final oldPath = _storagePath(avatar.value);
+    await _sb.from('profiles').update({'avatar_url': url}).eq('id', uid);
+    avatar.value = url;
+    if (oldPath != null) {
+      try {
+        await _sb.storage.from('artworks').remove([oldPath]);
+      } catch (_) {}
+    }
+    await refresh();
+  }
+
   static Future<void> signOut() async {
     artworks.value = [];
+    avatar.value = null;
     await _sb.auth.signOut();
   }
 }

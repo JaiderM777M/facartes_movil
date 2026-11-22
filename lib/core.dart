@@ -20,7 +20,7 @@ ThemeData buildTheme() {
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.white,
-      indicatorColor: kPrimary.withOpacity(.14),
+      indicatorColor: kPrimary.withValues(alpha: .14),
       labelTextStyle: WidgetStateProperty.all(const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -43,13 +43,14 @@ ThemeData buildTheme() {
 class Artwork {
   final String id, userId, title, artist, dept, technique, year, size, desc, category, imageUrl;
   final List<String> tags;
+  final String? artistAvatar;
   int likes;
   bool liked, saved;
   Artwork({
     required this.id, required this.userId, required this.title, required this.artist,
     required this.dept, required this.technique, required this.year, required this.size,
     required this.desc, required this.category, required this.imageUrl, required this.tags,
-    this.likes = 0, this.liked = false, this.saved = false,
+    this.artistAvatar, this.likes = 0, this.liked = false, this.saved = false,
   });
 
   bool get mine => userId == Supabase.instance.client.auth.currentUser?.id;
@@ -64,6 +65,7 @@ class Artwork {
       desc: m['description'] ?? '', category: m['category'] ?? '', imageUrl: m['image_url'] ?? '',
       tags: List<String>.from(m['tags'] ?? const []),
       likes: l.isEmpty ? 0 : (l.first['count'] as int),
+      artistAvatar: p['avatar_url'] as String?,
       liked: liked, saved: saved,
     );
   }
@@ -94,13 +96,30 @@ class ArtThumb extends StatelessWidget {
       );
 }
 
+class UserAvatar extends StatelessWidget {
+  final String? url;
+  final double radius;
+  const UserAvatar(this.url, {super.key, this.radius = 20});
+  @override
+  Widget build(BuildContext context) {
+    final u = url;
+    final has = u != null && u.isNotEmpty;
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFFE3C9B8),
+      backgroundImage: has ? NetworkImage(u) : null,
+      child: has ? null : Icon(Icons.person, color: Colors.white, size: radius * 1.1),
+    );
+  }
+}
+
 class AiBadge extends StatelessWidget {
   final String text;
   const AiBadge({super.key, this.text = 'Generado por IA'});
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: kPrimary.withOpacity(.12), borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: kPrimary.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.auto_awesome, size: 12, color: kPrimary),
           const SizedBox(width: 4),
@@ -131,7 +150,7 @@ class Card16 extends StatelessWidget {
         width: double.infinity,
         padding: padding,
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 12, offset: const Offset(0, 4)),
         ]),
         child: child,
       );

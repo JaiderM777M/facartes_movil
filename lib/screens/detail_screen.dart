@@ -81,7 +81,7 @@ class _DetailScreenState extends State<DetailScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const CircleAvatar(radius: 20, backgroundColor: Color(0xFFE3C9B8), child: Icon(Icons.person, color: Colors.white)),
+              UserAvatar(a.artistAvatar),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
