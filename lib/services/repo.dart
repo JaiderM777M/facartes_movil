@@ -16,9 +16,11 @@ class Repo {
         .select('*, profiles!artworks_user_id_fkey(name, dept), likes(count)')
         .order('created_at', ascending: false);
     final liked = (await _sb.from('likes').select('artwork_id').eq('user_id', uid))
-        .map((r) => r['artwork_id'] as String).toSet();
+        .map((r) => r['artwork_id'] as String)
+        .toSet();
     final saved = (await _sb.from('saves').select('artwork_id').eq('user_id', uid))
-        .map((r) => r['artwork_id'] as String).toSet();
+        .map((r) => r['artwork_id'] as String)
+        .toSet();
     artworks.value = rows
         .map((m) => Artwork.fromMap(m, liked: liked.contains(m['id']), saved: saved.contains(m['id'])))
         .toList();
@@ -57,9 +59,15 @@ class Repo {
   }
 
   static Future<void> publish({
-    required Uint8List bytes, required String mime, required String title,
-    required String desc, required String category, required String technique,
-    required String year, required String dims, required List<String> tags,
+    required Uint8List bytes,
+    required String mime,
+    required String title,
+    required String desc,
+    required String category,
+    required String technique,
+    required String year,
+    required String dims,
+    required List<String> tags,
   }) async {
     final ext = mime.contains('png') ? 'png' : 'jpg';
     final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.$ext';
@@ -67,10 +75,30 @@ class Repo {
     final url = _sb.storage.from('artworks').getPublicUrl(path);
     String? n(String s) => s.isEmpty ? null : s;
     await _sb.from('artworks').insert({
-      'user_id': uid, 'title': title, 'description': n(desc), 'category': category,
-      'technique': n(technique), 'year': n(year), 'dimensions': n(dims),
-      'tags': tags, 'image_url': url,
+      'user_id': uid,
+      'title': title,
+      'description': n(desc),
+      'category': category,
+      'technique': n(technique),
+      'year': n(year),
+      'dimensions': n(dims),
+      'tags': tags,
+      'image_url': url,
     });
+    await refresh();
+  }
+
+  /// Borra la obra (solo la tuya, por RLS) y su imagen del almacenamiento.
+  static Future<void> deleteArtwork(Artwork a) async {
+    const marker = '/artworks/';
+    final i = a.imageUrl.indexOf(marker);
+    final path = i >= 0 ? a.imageUrl.substring(i + marker.length) : null;
+    await _sb.from('artworks').delete().eq('id', a.id);
+    if (path != null) {
+      try {
+        await _sb.storage.from('artworks').remove([path]);
+      } catch (_) {}
+    }
     await refresh();
   }
 

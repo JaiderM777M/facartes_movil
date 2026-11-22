@@ -13,26 +13,69 @@ class DetailScreen extends StatefulWidget {
 }
 
 class _DetailScreenState extends State<DetailScreen> {
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Eliminar obra'),
+        content: Text('¿Seguro que quieres eliminar "${widget.a.title}"? Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final nav = Navigator.of(context);
+    final m = ScaffoldMessenger.of(context);
+    try {
+      await Repo.deleteArtwork(widget.a);
+      nav.pop();
+      m.showSnackBar(const SnackBar(content: Text('Obra eliminada')));
+    } catch (e) {
+      m.showSnackBar(SnackBar(content: Text('No se pudo eliminar: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final a = widget.a;
+    final top = MediaQuery.of(context).padding.top + 8;
     return Scaffold(
       body: ListView(padding: EdgeInsets.zero, children: [
         Stack(children: [
           SizedBox(
-            height: 320, width: double.infinity,
+            height: 320,
+            width: double.infinity,
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
               child: ArtThumb(a, radius: 0),
             ),
           ),
           Positioned(
-            left: 12, top: MediaQuery.of(context).padding.top + 8,
+            left: 12,
+            top: top,
             child: CircleAvatar(
               backgroundColor: Colors.white,
               child: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back, color: kInk)),
             ),
           ),
+          if (a.mine)
+            Positioned(
+              right: 12,
+              top: top,
+              child: CircleAvatar(
+                backgroundColor: Colors.white,
+                child: IconButton(
+                  tooltip: 'Eliminar obra',
+                  onPressed: _confirmDelete,
+                  icon: const Icon(Icons.delete_outline, color: kInk),
+                ),
+              ),
+            ),
         ]),
         Padding(
           padding: const EdgeInsets.all(20),
@@ -46,14 +89,16 @@ class _DetailScreenState extends State<DetailScreen> {
                   Container(
                     margin: const EdgeInsets.only(top: 3),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                    decoration: BoxDecoration(color: kPrimary.withOpacity(.12), borderRadius: BorderRadius.circular(20)),
+                    decoration: BoxDecoration(color: kPrimary.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)),
                     child: Text(a.dept, style: const TextStyle(color: kPrimary, fontSize: 11.5, fontWeight: FontWeight.w600)),
                   ),
                 ]),
               ),
               IconButton(
                 onPressed: () {
-                  Repo.toggleLike(a).catchError((_) { if (mounted) setState(() {}); });
+                  Repo.toggleLike(a).catchError((_) {
+                    if (mounted) setState(() {});
+                  });
                   setState(() {});
                 },
                 icon: Icon(a.liked ? Icons.favorite : Icons.favorite_border, color: kPrimary),
@@ -61,7 +106,9 @@ class _DetailScreenState extends State<DetailScreen> {
               Text('${a.likes}', style: const TextStyle(fontWeight: FontWeight.w700)),
               IconButton(
                 onPressed: () {
-                  Repo.toggleSave(a).catchError((_) { if (mounted) setState(() {}); });
+                  Repo.toggleSave(a).catchError((_) {
+                    if (mounted) setState(() {});
+                  });
                   setState(() {});
                 },
                 icon: Icon(a.saved ? Icons.bookmark : Icons.bookmark_border, color: kInk),
